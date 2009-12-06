@@ -114,6 +114,9 @@ Alice.Application = Class.create({
     if (!$(windowId)) {
       $('windows').insert(html['window']);
       $('tabs').insert(html.tab);
+      $('tab_overflow_overlay').insert(html.select);
+      $(windowId+"_tab_overflow_button").selected = false;
+      this.activeWindow().tabOverflowButton.selected = true;
       Alice.makeSortable();
     }
   },
@@ -122,7 +125,8 @@ Alice.Application = Class.create({
     switch (action.event) {
       case "join":
         this.insertWindow(action['window'].id, action.html);
-        var win = new Alice.Window(this, action['window'].id, action['window'].title, false)
+        var win = new Alice.Window(this, action['window'].id, action['window'].title, false);
+        win.nicks = action.nicks;
         this.addWindow(win);
         break;
       case "part":

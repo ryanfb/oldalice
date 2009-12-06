@@ -63,7 +63,9 @@ has dispatcher => (
 
 has notifier => (
   is      => 'ro',
+  lazy    => 1,
   default => sub {
+    my $self = shift;
     eval {
       if ($^O eq 'darwin') {
         # 5.10 doesn't seem to put Extras in @INC
@@ -80,7 +82,7 @@ has notifier => (
         return App::Alice::Notifier::LibNotify->new;
       }
     };
-    print STDERR "Notifications disabled...\n" if $@;
+    $self->log_debug("Notifications disabled...\n") if $@;
   }
 );
 
@@ -162,14 +164,15 @@ sub run {
   $self->template;
   $self->httpd;
   $self->logger;
+  $self->notifier;
 
   $self->add_irc_server($_, $self->config->servers->{$_})
     for keys %{$self->config->servers};
 
+  print STDERR "Location: http://".$self->config->http_address.":". $self->config->http_port ."/view\n";
   
   if ($self->standalone) { 
     $self->cond(AnyEvent->condvar);
-    say STDERR "Location: http://localhost:". $self->config->port ."/view";
     my @sigs;
     for my $sig (qw/INT QUIT/) {
       my $w = AnyEvent->signal(
@@ -243,6 +246,19 @@ sub find_window {
   }
 }
 
+sub create_window {
+  my ($self, $title, $connection) = @_;
+  my $id = _build_window_id($title, $connection->alias);
+  my $window = App::Alice::Window->new(
+    title    => $title,
+    irc      => $connection,
+    assetdir => $self->config->assetdir,
+    app      => $self,
+  );
+  $self->add_window($id, $window);
+  return $window;
+}
+
 sub _build_window_id {
   my ($title, $connection_alias) = @_;
   my $name = lc($title . $connection_alias);
@@ -256,14 +272,9 @@ sub find_or_create_window {
   if (my $window = $self->find_window($title, $connection)) {
     return $window;
   }
-  my $id = _build_window_id($title, $connection->alias);
-  my $window = App::Alice::Window->new(
-    title    => $title,
-    irc      => $connection,
-    assetdir => $self->config->assetdir,
-    app      => $self,
-  );
-  $self->add_window($id, $window);
+  else {
+    $self->create_window($title, $connection);
+  }
 }
 
 sub sorted_windows {

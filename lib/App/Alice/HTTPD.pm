@@ -47,6 +47,7 @@ has 'ping_timer' => (
 sub BUILD {
   my $self = shift;
   my $httpd = AnyEvent::HTTPD->new(
+    host => $self->config->http_address,
     port => $self->config->http_port,
   );
   $httpd->reg_cb(
@@ -63,6 +64,7 @@ sub BUILD {
     '/logs'         => sub{$self->send_logs(@_)},
     '/search'       => sub{$self->send_search(@_)},
     'client_disconnected' => sub{$self->purge_disconnects(@_)},
+    request         => sub{$self->check_authentication(@_)},
   );
   $self->httpd($httpd);
   $self->ping;
@@ -101,12 +103,10 @@ sub broadcast {
 
 sub check_authentication {
   my ($self, $httpd, $req) = @_;
-  unless ($self->config->auth
+  return unless ($self->config->auth
       and ref $self->config->auth eq 'HASH'
       and $self->config->auth->{username}
-      and $self->config->auth->{password}) {
-    $req->respond([200,'ok']) 
-  }
+      and $self->config->auth->{password});
 
   if (my $auth  = $req->headers->{authorization}) {
     $auth =~ s/^Basic //;
@@ -114,13 +114,13 @@ sub check_authentication {
     my ($user,$password)  = split(/:/, $auth);
     if ($self->config->auth->{username} eq $user &&
         $self->config->auth->{password} eq $password) {
-      $req->respond([200,'ok']);
       return;
     }
     else {
       $self->log_debug("auth failed");
     }
   }
+  $httpd->stop_request;
   $req->respond([401, 'unauthorized', {'WWW-Authenticate' => 'Basic realm="Alice"'}]);
 }
 
@@ -131,8 +131,8 @@ sub setup_stream {
   $self->add_stream(
     App::Alice::Stream->new(
       queue   => [
-        map({$_->nicks_action} $self->app->windows),
         $self->app->buffered_messages($msgid),
+        map({$_->nicks_action} $self->app->windows),
       ],
       request => $req,
     )
