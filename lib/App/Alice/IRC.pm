@@ -1,10 +1,9 @@
 package App::Alice::IRC;
 
-use Encode;
 use AnyEvent;
 use AnyEvent::IRC::Client;
 use Digest::MD5 qw/md5_hex/;
-use Moose;
+use Any::Moose;
 
 has 'cl' => (
   is      => 'rw',
@@ -49,15 +48,13 @@ has 'reconnect_timer' => (
 );
 
 has 'reconnect_count' => (
-  traits => ['Counter'],
   is  => 'rw',
   isa => 'Int',
   default   => 0,
-  handles   => {
-    increase_reconnect_count => 'inc',
-    reset_reconnect_count => 'reset',
-  },
 );
+
+sub increase_reconnect_count {$_[0]->reconnect_count($_[0]->reconnect_count + 1)}
+sub reset_reconnect_count {$_[0]->reconnect_count(0)}
 
 has [qw/is_connected disabled removed/] => (
   is  => 'rw',
@@ -66,19 +63,17 @@ has [qw/is_connected disabled removed/] => (
 );
 
 has nicks => (
-  traits    => ['Hash'],
   is        => 'rw',
   isa       => 'HashRef[HashRef|Undef]',
   default   => sub {{}},
-  handles   => {
-    remove_nick   => 'delete',
-    includes_nick => 'exists',
-    get_nick_info => 'get',
-    all_nicks     => 'keys',
-    all_nick_info => 'values',
-    set_nick_info => 'set',
-  }
 );
+
+sub remove_nick {delete $_[0]->nicks->{$_[1]}}
+sub includes_nick {exists $_[0]->nicks->{$_[1]}}
+sub get_nick_info {$_[0]->nicks->{$_[1]}}
+sub all_nicks {keys %{$_[0]->nicks}}
+sub all_nick_info {values %{$_[0]->nicks}}
+sub set_nick_info {$_[0]->nicks->{$_[1]} = $_[2]}
 
 sub BUILD {
   my $self = shift;
@@ -116,14 +111,12 @@ sub log_info {
 
 sub window {
   my ($self, $title) = @_;
-  $title = decode("utf8", $title, Encode::FB_QUIET);
   return $self->app->find_or_create_window(
            $title, $self);
 }
 
 sub find_window {
   my ($self, $title) = @_;
-  $title = decode("utf8", $title, Encode::FB_QUIET);
   return $self->app->find_window($title, $self);
 }
 
@@ -431,9 +424,10 @@ sub nick_avatar {
   my ($self, $nick) = @_;
   my $info = $self->get_nick_info($nick);
   if ($info and $info->{real}) {
-    if ($info->{real} =~ /.+@.+/) {
+    if ($info->{real} =~ /([^<\s]+@[^\s>]+)/) {
+      my $email = $1;
       return "//www.gravatar.com/avatar/"
-           . md5_hex($info->{real}) . "?s=32&amp;r=x";
+           . md5_hex($email) . "?s=32&amp;r=x";
     }
     elsif ($info->{real} =~ /^https?:(\/\/\S+(?:jpe?g|png|gif))/) {
       return $1;
